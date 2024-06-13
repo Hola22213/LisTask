@@ -1,0 +1,163 @@
+﻿@page "/Tasks"
+@inject IJSRuntime JSRuntime
+
+<h1 class="text-center mt-3">Lista de Tareas</h1>
+
+@if (tasks.Any())
+{
+    <div class="table-responsive" @ref="tableContainer" style="max-height: 500px; overflow-y: auto;">
+        <table class="table table-striped table-hover">
+            <thead class="thead-light">
+                <tr>
+                    <th>ID</th>
+                    <th>Título</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var task in tasks)
+                {
+                    <tr>
+                        <td>@task.Id</td>
+                        <td>@task.Title</td>
+                        <td>@GetTaskStateDisplayName(task.State)</td>
+                        <td>
+                            <button @onclick="() => AdvanceTaskState(task.Id)"
+                                    class="btn btn-success btn-sm"
+                                    disabled="@IsNextStateButtonDisabled(task)">
+                                Siguiente Estado
+                            </button>
+                            <button @onclick="() => DeleteTask(task.Id)" class="btn btn-danger btn-sm ml-1">Eliminar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <p class="text-center">No hay tareas.</p>
+}
+
+<div class="task-input mt-3">
+    <input type="text" @bind="newTaskTitle" class="form-control mb-2" placeholder="Título de la tarea" />
+    <button @onclick="AddTask" class="btn btn-primary mb-2">Agregar Tarea</button>
+</div>
+
+@code {
+    private List<TaskItem> tasks = new List<TaskItem>();
+    private string newTaskTitle;
+
+    private ElementReference tableContainer;
+    private int totalTasks = 100000; // Total de tareas
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInitialTasks();
+        RegisterScrollListener();
+    }
+
+    private async Task LoadInitialTasks()
+    {
+        tasks.Clear();
+        for (int i = 1; i <= totalTasks; i++)
+        {
+            tasks.Add(new TaskItem
+                {
+                    Id = i,
+                    Title = $"Tarea {i}",
+                    State = TaskState.Planificada
+                });
+        }
+    }
+
+    private async Task RegisterScrollListener()
+    {
+        await JSRuntime.InvokeVoidAsync("registerScrollListener", DotNetObjectReference.Create(this));
+    }
+
+    [JSInvokable]
+    public async Task OnScroll()
+    {
+        var windowHeight = await JSRuntime.InvokeAsync<int>("getWindowHeight");
+        var scrollPosition = await JSRuntime.InvokeAsync<int>("getScrollPosition");
+
+        var tableBottom = await JSRuntime.InvokeAsync<int>("getElementBottom", tableContainer);
+        if (scrollPosition + windowHeight >= tableBottom - 100)
+        {
+            await Task.Delay(100); // Delay para evitar que se active demasiadas veces seguidas
+            await InvokeAsync(LoadMoreTasks);
+        }
+    }
+
+    private async Task LoadMoreTasks()
+    {
+        // No se necesita cargar más tareas porque ya están todas cargadas
+    }
+
+    private void AddTask()
+    {
+        if (!string.IsNullOrWhiteSpace(newTaskTitle))
+        {
+            totalTasks++;
+            tasks.Add(new TaskItem { Id = totalTasks, Title = newTaskTitle, State = TaskState.Planificada });
+            newTaskTitle = string.Empty;
+        }
+    }
+
+    private void DeleteTask(int id)
+    {
+        Console.WriteLine($"Eliminar tarea con ID: {id}");
+
+        var taskToRemove = tasks.FirstOrDefault(t => t.Id == id);
+        if (taskToRemove != null)
+        {
+            tasks.Remove(taskToRemove);
+            totalTasks--;
+        }
+    }
+
+    private void AdvanceTaskState(int id)
+    {
+        Console.WriteLine($"Avanzar estado de tarea con ID: {id}");
+
+        var task = tasks.FirstOrDefault(t => t.Id == id);
+        if (task != null && task.State != TaskState.Completada)
+        {
+            task.State = (TaskState)(((int)task.State + 1) % Enum.GetValues(typeof(TaskState)).Length);
+        }
+    }
+
+    private bool IsNextStateButtonDisabled(TaskItem task)
+    {
+        return task.State == TaskState.Completada;
+    }
+
+    private string GetTaskStateDisplayName(TaskState state)
+    {
+        switch (state)
+        {
+            case TaskState.EnCurso:
+                return "En curso";
+            default:
+                return state.ToString();
+        }
+    }
+
+    public enum TaskState
+    {
+        Planificada,
+        Iniciada,
+        EnCurso,
+        Completada
+    }
+
+    public class TaskItem
+    {
+        public int Id { get; set; }
+        public string Title { get; set; }
+        public TaskState State { get; set; }
+    }
+}
