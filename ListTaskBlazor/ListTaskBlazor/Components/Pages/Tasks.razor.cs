@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+@rendermode InteractiveServer;
 public class TaskManager
 {
     private List<TaskItem> tasks = new List<TaskItem>();
